@@ -22,12 +22,12 @@ plt.switch_backend('agg')
 
 class GAN(object):
     """ Generative Adversarial Network """
-    def __init__(self, width=28, height=28, channels=1, depth=64, dropout=0.4):
+    def __init__(self, width=28, height=28, channels=1, depth=32, dropout=0.4):
         self.width = width
         self.height = height
         self.channels = channels
-        self.depth = depth;
         self.dropout=0.4
+        self.depth=depth
         
         
         self.leaky_relu=LeakyReLU(alpha=0.2)
@@ -50,7 +50,7 @@ class GAN(object):
     
     def generator(self):
         dropout = self.dropout
-        depth = 64+64+64+64
+        depth = self.depth * 4
         dim = 7
         batch_momentum = 0.9
         model = Sequential()
@@ -77,13 +77,14 @@ class GAN(object):
     
     def descriminator(self):
         model = Sequential()
-        model.add(Conv2D(self.depth*1, 5, strides=2, input_shape=self.shape, padding='same', activation=self.leaky_relu))
+        depth = self.depth
+        model.add(Conv2D(depth*1, 5, strides=2, input_shape=self.shape, padding='same', activation=self.leaky_relu))
         model.add(Dropout(self.dropout))
-        model.add(Conv2D(self.depth*2, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Conv2D(depth*2, 5, strides=2, padding='same', activation=self.leaky_relu))
         model.add(Dropout(self.dropout))
-        model.add(Conv2D(self.depth*4, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Conv2D(depth*4, 5, strides=2, padding='same', activation=self.leaky_relu))
         model.add(Dropout(self.dropout))
-        model.add(Conv2D(self.depth*8, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Conv2D(depth*8, 5, strides=2, padding='same', activation=self.leaky_relu))
         model.add(Dropout(self.dropout))
         model.add(Flatten())
         model.add(Dense(1))
@@ -100,7 +101,7 @@ class GAN(object):
         return model
 
     
-    def train(self, X_train, epochs=20000, batch=32, save_interval=5):
+    def train(self, X_train, epochs=20000, batch=64, save_interval=5):
         half_batch = int(batch/2)
         
         for cnt in range(epochs):
