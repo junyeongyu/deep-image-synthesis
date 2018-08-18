@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """ Simple implementation of Generative Adversarial Neural Network """
@@ -7,7 +9,7 @@ import numpy as np
 from IPython.core.debugger import Tracer
 
 from keras.datasets import mnist
-from keras.layers import Input, Dense, Reshape, Flatten, Dropout
+from keras.layers import Conv2D, Activation, UpSampling2D, Input, Dense, Reshape, Flatten, Dropout, Conv2DTranspose
 from keras.layers import BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Sequential
@@ -20,10 +22,15 @@ plt.switch_backend('agg')
 
 class GAN(object):
     """ Generative Adversarial Network """
-    def __init__(self, width=28, height=28, channels=1):
+    def __init__(self, width=28, height=28, channels=1, depth=64, dropout=0.4):
         self.width = width
         self.height = height
         self.channels = channels
+        self.depth = depth;
+        self.dropout=0.4
+        
+        
+        self.leaky_relu=LeakyReLU(alpha=0.2)
         
         self.shape = (self.width, self.height, self.channels)
         self.optimizer = Adam(lr=0.0002, decay=8e-9)
@@ -42,64 +49,58 @@ class GAN(object):
         
     
     def generator(self):
+        dropout = self.dropout
+        depth = 64+64+64+64
+        dim = 7
+        batch_momentum = 0.9
         model = Sequential()
-        model.add(Dense(256, activation="relu", input_shape=(100,)))
-        model.add(Dense(256, input_shape=(100,)))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(512))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(1024))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(self.size, activation='tanh'))
-        model.add(Reshape(self.shape))
-        
+        model.add(Dense(dim*dim*depth, input_dim=100))
+        model.add(BatchNormalization(momentum=batch_momentum))
+        model.add(Activation('relu'))
+        model.add(Reshape((dim, dim, depth)))
+        model.add(Dropout(dropout))
+        model.add(UpSampling2D())
+        model.add(Conv2DTranspose(int(depth/2), 5, padding='same'))
+        model.add(BatchNormalization(momentum=batch_momentum))
+        model.add(Activation('relu'))
+        model.add(UpSampling2D())
+        model.add(Conv2DTranspose(int(depth/4), 5, padding='same'))
+        model.add(BatchNormalization(momentum=batch_momentum))
+        model.add(Activation('relu'))
+        model.add(Conv2DTranspose(int(depth/8), 5, padding='same'))
+        model.add(BatchNormalization(momentum=0.9))
+        model.add(Activation('relu'))
+        model.add(Conv2DTranspose(1, 5, padding='same'))
+        model.add(Activation('sigmoid'))
         model.summary()
-        
-        return model
+        return model;
     
     def descriminator(self):
         model = Sequential()
-        model.add(Flatten(input_shape=self.shape))
-        model.add(Dense(self.size, input_shape=self.shape))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dense(int(self.size/2)))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dense(1, activation='sigmoid'))
+        model.add(Conv2D(self.depth*1, 5, strides=2, input_shape=self.shape, padding='same', activation=self.leaky_relu))
+        model.add(Dropout(self.dropout))
+        model.add(Conv2D(self.depth*2, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Dropout(self.dropout))
+        model.add(Conv2D(self.depth*4, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Dropout(self.dropout))
+        model.add(Conv2D(self.depth*8, 5, strides=2, padding='same', activation=self.leaky_relu))
+        model.add(Dropout(self.dropout))
+        model.add(Flatten())
+        model.add(Dense(1))
+        model.add(Activation('sigmoid'))
         model.summary()
         return model
     
     def stacked_g_d(self):
-        self.D.trainable = False
+#        self.D.trainable = False
         model = Sequential()
         model.add(self.G)
         model.add(self.D)
         model.summary()
         return model
-    
-#    def train(self, X_train, epochs=20000, batch=32, save_interval=200):
-#        for cnt in range(epochs):
-#            half_batch = int(batch/2)
-#            random_index = np.random.randint(0, len(X_train) - half_batch)
-#            legit_images = X_train[random_index : random_index + half_batch].reshape(half_batch, self.width, self.height, self.channels)
-#            gen_noise = np.random.normal(0, 1, (half_batch,100))
-#            syntetic_images = self.G.predict(gen_noise)
-#            x_combined_batch = np.concatenate((legit_images, syntetic_images))
-#            y_combined_batch = np.concatenate((np.ones((half_batch, 1)), np.zeros((half_batch, 1))))
-#            d_loss = self.D.train_on_batch(x_combined_batch, y_combined_batch)
-#            
-#            # train generator
-#            noise = np.random.normal(0, 1, (batch, 100))
-#            y_mislabled = np.ones((batch, 1))
-#            g_loss = self.stacked_G_D.train_on_batch(noise, y_mislabled)
-#            print ('epoch: %d, [Discriminator :: d_loss: %f], [ Generator :: loss: %f]' % (cnt, d_loss, g_loss))
-#            if cnt % save_interval == 0:
-#                self.plot_images(save2file=True, step=cnt)
 
     
-    def train(self, X_train, epochs=20000, batch=32, save_interval=200):
+    def train(self, X_train, epochs=20000, batch=32, save_interval=5):
         half_batch = int(batch/2)
         
         for cnt in range(epochs):
